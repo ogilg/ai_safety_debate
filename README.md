@@ -1,0 +1,1 @@
+The aim of this project is to replicate the AI safety via debate experiment on the MNIST dataset. Two agents (one honest and the other dishonest) take turns to reveal pixels of a single-digit number, the judge, that has been previously trained to guess digits from random sparse pixels, has to guess the correct digit.
