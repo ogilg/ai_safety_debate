@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-from torchvision import datasets, transforms
 import numpy as np
 import argparse
 import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from data_utils import get_mnist_train_dataset, get_mnist_test_dataset
 
 # Define the MLP model architecture
 class MNISTJudge(nn.Module):
@@ -259,14 +259,9 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    # Load MNIST dataset
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))
-    ])
-    
-    train_dataset = datasets.MNIST('./data', train=True, download=True, transform=transform)
-    test_dataset = datasets.MNIST('./data', train=False, download=True, transform=transform)
+    # Load MNIST datasets using data_utils
+    train_dataset = get_mnist_train_dataset('./data')
+    test_dataset = get_mnist_test_dataset('./data')
     
     # Create sparse versions with fixed number of pixels
     sparse_train_dataset = SparseMNIST(

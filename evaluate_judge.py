@@ -1,12 +1,12 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
 import numpy as np
 import argparse
 import os
 import matplotlib.pyplot as plt
 from train_judge import MNISTJudge, SparseMNIST
+from data_utils import get_mnist_test_dataset
 
 def visualize_predictions(model, test_dataset, device, num_samples=5, save_path=None):
     model.eval()
@@ -49,7 +49,7 @@ def visualize_predictions(model, test_dataset, device, num_samples=5, save_path=
 
 def evaluate_by_sparsity(model, test_dataset, device, sparsity_levels=None, sampling_mode='random'):
     if sparsity_levels is None:
-        sparsity_levels = [5, 10, 15, 20, 30, 40, 50]
+        sparsity_levels = [5, 10]
     
     results = {}
     model.eval()
@@ -144,13 +144,8 @@ def main():
     print(f"Model type: {model_type}")
     print(f"Validation accuracy: {checkpoint['val_acc']:.2f}%")
     
-    # Load MNIST test dataset
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))
-    ])
-    
-    test_dataset = datasets.MNIST('./data', train=False, download=True, transform=transform)
+    # Load MNIST test dataset using data_utils
+    test_dataset = get_mnist_test_dataset('./data')
     sparse_test_dataset = SparseMNIST(
         test_dataset, 
         num_pixels=args.num_pixels, 
