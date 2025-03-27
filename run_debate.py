@@ -96,6 +96,7 @@ def main():
             # Remove full_image and revealed_pixels columns if they exist
             if 'full_image' in game:
                 del game['full_image']
+                del game['revealed_pixels']
             game['probabilities'] = game['probabilities'].tolist()
             
             # Convert numpy types within each game to Python native types
