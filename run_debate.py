@@ -11,7 +11,6 @@ if os.environ.get('DISPLAY', '') == '':
     matplotlib.use('Agg')
 from data_utils import get_mnist_test_dataset
 from evaluate_debate import evaluate_debate_performance
-from debate_agents import MNISTDebateGame, Player
 
 def main():
     parser = argparse.ArgumentParser(description='MNIST Debate Game with MCTS-PUCT')
@@ -21,6 +20,8 @@ def main():
                         help='Total number of pixels to reveal (default: use judge model training value)')
     parser.add_argument('--num-simulations', type=int, default=100, 
                         help='Number of MCTS simulations per move')
+    parser.add_argument('--precommit', action='store_true',
+                        help='Whether the deceptive player has to precommit to a digit')
     parser.add_argument('--num-games', type=int, default=10, 
                         help='Number of games to evaluate')
     parser.add_argument('--save-dir', type=str, default='debate_results', 
@@ -85,6 +86,7 @@ def main():
         num_simulations=args.num_simulations,
         temperature=args.temperature,
         sampling_mode=sampling_mode,
+        precommit=args.precommit,
         visualize=args.visualize,
         save_dir=viz_dir
     )

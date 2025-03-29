@@ -8,7 +8,7 @@ import random
 from debate_agents import MNISTDebateGame, Player
 
 def simulate_debate(judge_model, image, true_label, total_pixels=None, num_simulations=100, 
-                   temperature=0.5, verbose=True, sampling_mode='random', visualize=False,
+                   temperature=0.5, verbose=True, sampling_mode='random', precommit=False, visualize=False,
                    save_dir=None):
     """
     Simulate a debate game between honest and deceptive agents.
@@ -19,6 +19,7 @@ def simulate_debate(judge_model, image, true_label, total_pixels=None, num_simul
         true_label: The correct digit
         total_pixels: Total number of pixels to reveal (should match judge training)
         num_simulations: Number of MCTS simulations per move
+        precommit: Whether the deceptive player has to precommit to a digit
         temperature: Temperature for action selection
         verbose: Whether to print progress
         sampling_mode: How to sample pixels: 'random' or 'nonzero'
@@ -42,8 +43,8 @@ def simulate_debate(judge_model, image, true_label, total_pixels=None, num_simul
     max_turns = game.max_turns
     
     # Initialize agents
-    honest_player = Player(judge_model, max_turns, num_simulations=num_simulations, player_type='honest')
-    deceptive_player = Player(judge_model, max_turns, num_simulations=num_simulations, player_type='deceptive')
+    honest_player = Player(judge_model, max_turns, num_simulations=num_simulations, player_type='honest', precommit=precommit)
+    deceptive_player = Player(judge_model, max_turns, num_simulations=num_simulations, player_type='deceptive', precommit=precommit)
     
     # Play the game
     while not game.is_terminal():
@@ -65,7 +66,7 @@ def simulate_debate(judge_model, image, true_label, total_pixels=None, num_simul
             print(f"Turn {len(game.revealed_pixels)}: {player_name} player revealed pixel at {action}")
     
     # Get final result
-    result = game.get_result()
+    result = game.get_game_result()
     
     # Add the full image to the result
     result['full_image'] = image.tolist() if isinstance(image, np.ndarray) else image
@@ -96,7 +97,7 @@ def simulate_debate(judge_model, image, true_label, total_pixels=None, num_simul
     return result
 
 def evaluate_debate_performance(judge_model, test_dataset=None, num_games=100, total_pixels=None, 
-                               num_simulations=100, temperature=0.5, sampling_mode='random',
+                               num_simulations=100, precommit=False, temperature=0.5, sampling_mode='random',
                                visualize=False, save_dir=None):
     """
     Evaluate the performance of the debate players across multiple games using vectorized operations.
@@ -107,6 +108,7 @@ def evaluate_debate_performance(judge_model, test_dataset=None, num_games=100, t
         num_games: Number of games to simulate
         total_pixels: Total number of pixels to reveal (if None, use judge model value)
         num_simulations: Number of MCTS simulations per move
+        precommit: Whether the deceptive player has to precommit to a digit
         temperature: Temperature for action selection
         sampling_mode: How to sample pixels ('random' or 'nonzero')
         visualize: Whether to visualize debate games
@@ -135,8 +137,8 @@ def evaluate_debate_performance(judge_model, test_dataset=None, num_games=100, t
     if visualize and save_dir:
         os.makedirs(save_dir, exist_ok=True)
         
-        # Determine which games to visualize (randomly select 10%)
-        num_to_visualize = max(1, int(num_games * 0.1))  # At least 1 game
+        # Determine which games to visualize (randomly select 1%)
+        num_to_visualize = max(1, int(num_games * 0.01))  # At least 1 game
         games_to_visualize = set(random.sample(range(num_games), num_to_visualize))
     else:
         games_to_visualize = set()
@@ -166,6 +168,7 @@ def evaluate_debate_performance(judge_model, test_dataset=None, num_games=100, t
             temperature=temperature,
             verbose=False,
             sampling_mode=sampling_mode,
+            precommit=precommit,
             visualize=should_visualize,
             save_dir=game_save_dir
         )

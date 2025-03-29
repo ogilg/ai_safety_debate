@@ -103,11 +103,12 @@ class MCTSNode:
         return best_action, self.children[best_action]
 
 class Player:
-    def __init__(self, judge_model, max_turns, num_simulations=100, player_type='honest', batch_size=8):
+    def __init__(self, judge_model, max_turns, num_simulations=100, player_type='honest', precommit=False, batch_size=8):
         self.judge_model = judge_model
         self.max_turns = max_turns
         self.num_simulations = num_simulations
         self.player_type = player_type
+        self.precommit = precommit
         self.batch_size = batch_size
         
     def decide_move(self, state, temperature=0.5):
@@ -200,28 +201,6 @@ class Player:
         
         return sim_state
     
-    def _batch_evaluate_terminal(self, states):
-        """Evaluate a batch of terminal states at once"""
-        # Create a batch of sparse images
-        sparse_images = [get_sparse_image(state.revealed_pixels) for state in states]
-        
-        # Get batch predictions using the unified method
-        _, probabilities = self.judge_model.batch_predict(sparse_images)
-        
-        # Extract relevant probabilities based on player type
-        values = []
-        for i, state in enumerate(states):
-            state_probs = probabilities[i]
-            
-            if self.player_type == 'honest':
-                # Honest agent wants high probability for true label
-                values.append(state_probs[state.true_label] / state_probs.max())
-            else:
-                # Deceptive agent wants high probability for deception target label
-                values.append(1- state_probs[state.true_label] / state_probs.max())
-        
-        return values
-    
     def _expand(self, node):
         """Expand node by adding all possible children"""
         for action in node.state.get_legal_actions():
@@ -282,14 +261,45 @@ class Player:
         """Evaluate a single terminal state (kept for compatibility)"""
         sparse_image = get_sparse_image(state.revealed_pixels)
         _, probabilities = self.judge_model.predict(sparse_image)
+        return self._get_terminal_state_value(state, probabilities)
+    
+    def _batch_evaluate_terminal(self, states):
+        """Evaluate a batch of terminal states at once"""
+        # Create a batch of sparse images
+        sparse_images = [get_sparse_image(state.revealed_pixels) for state in states]
         
-        if self.player_type == 'honest':
-            # Honest agent wants high probability for true label relative to other labels
-            return probabilities[state.true_label] / probabilities.max()
+        # Get batch predictions using the unified method
+        _, probabilities = self.judge_model.batch_predict(sparse_images)
+        
+        # Extract relevant probabilities based on player type
+        values = []
+        for i, state in enumerate(states):
+            state_probs = probabilities[i]
+            value = self._get_terminal_state_value(state, state_probs)
+            values.append(value)
+        
+        return values
+    
+    def _get_terminal_state_value(self, state, probabilities):
+        """Evaluate a single terminal state"""
+        if self.precommit:
+            true_label_score = probabilities[state.true_label] / probabilities.max()
+            if self.player_type == 'honest':
+                # Honest agent wants high probability for true label relative to other labels
+                return true_label_score
+            else:
+                # Deceptive agent wants low probability for true label
+                return 1 - true_label_score
         else:
-            # Deceptive agent wants low probability for true label
-            return 1 - probabilities[state.true_label] / probabilities.max()
-
+            # Score needs to be between 0 and 1
+            true_v_deception_score = (1 + probabilities[state.true_label] - probabilities[state.deception_target_label]) / 2
+            if self.player_type == 'honest':
+                # Honest agent wants high probability for true label relative to other labels
+                return true_v_deception_score
+            else:
+                # Deceptive agent wants low probability for true label
+                return 1 - true_v_deception_score
+        
 class MNISTDebateGame:
     def __init__(self, judge_model, image, true_label, deception_target_label=None, total_pixels=None, sampling_mode='random'):
         """
@@ -373,7 +383,7 @@ class MNISTDebateGame:
             # Otherwise, each player gets the same number of turns
             return num_revealed >= 2 * self.max_turns
     
-    def get_result(self):
+    def get_game_result(self):
         """Get the final result of the game"""
         sparse_image = create_sparse_image(self.revealed_pixels)
         predicted_digit, probabilities = self.judge_model.predict(sparse_image)
