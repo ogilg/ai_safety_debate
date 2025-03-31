@@ -11,18 +11,33 @@ if os.environ.get('DISPLAY', '') == '':
 
 class MNISTGameState:
     def __init__(self, image, true_label, deception_target_label, revealed_pixels=None, current_player=0, sampling_mode='random'):
-        self.image = image  # Full MNIST image (28x28)
-        self.true_label = true_label  # Correct digit
-        self.deception_target_label = deception_target_label  # Target incorrect digit for deceptive agent
-        self.revealed_pixels = revealed_pixels or []  # List of (x, y, value) tuples
-        self.current_player = current_player  # 0 for honest, 1 for deceptive
-        self.sampling_mode = sampling_mode  # How to sample pixels: 'random' or 'nonzero'
+        # Convert image to float32 to reduce memory usage
+        self.image = image  
+        if not isinstance(self.image, np.ndarray):
+            self.image = np.array(self.image, dtype=np.float32)
+        elif self.image.dtype != np.float32:
+            self.image = self.image.astype(np.float32)
+            
+        self.true_label = true_label
+        self.deception_target_label = deception_target_label
+        self.current_player = current_player
+        self.sampling_mode = sampling_mode
         
-        # Create a mask for faster legal action checking
-        self.revealed_mask = np.zeros((28, 28), dtype=bool)
-        for x, y, _ in self.revealed_pixels:
-            self.revealed_mask[y, x] = True
+        # Create a mask for faster legal action checking (using bool_ is more memory efficient)
+        self.revealed_mask = np.zeros((28, 28), dtype=np.bool_)
         
+        # Store revealed pixels more efficiently
+        if revealed_pixels is None or len(revealed_pixels) == 0:
+            self.revealed_pixels = []
+            # No need to update mask as it's already all zeros
+        else:
+            # Store the original list format for compatibility
+            self.revealed_pixels = revealed_pixels
+            
+            # Update the mask for fast operations
+            for x, y, _ in revealed_pixels:
+                self.revealed_mask[y, x] = True
+    
     def get_legal_actions(self):
         """Return coordinates of pixels that haven't been revealed yet using vectorized operations"""
         if self.sampling_mode == 'random':
@@ -41,7 +56,10 @@ class MNISTGameState:
         """Reveal a pixel and return new state"""
         x, y = action
         pixel_value = float(self.image[y, x])
-        new_revealed = self.revealed_pixels + [(x, y, pixel_value)]
+        
+        # Create a new list for revealed pixels
+        new_revealed = self.revealed_pixels.copy()
+        new_revealed.append((x, y, pixel_value))
         
         # Create a new state with updated mask
         new_state = MNISTGameState(
@@ -177,9 +195,11 @@ class Player:
         return self._batch_evaluate_terminal(terminal_states)
     
     def _simulate_single(self, state):
-        """Simulate a single random playout"""
+        """Simulate a single random playout with memory optimization"""
+        # Create a new state object reusing the image reference 
+        # to avoid duplicating the large image array
         sim_state = MNISTGameState(
-            state.image,
+            state.image,  # This is just a reference, not a copy
             state.true_label,
             state.deception_target_label,
             state.revealed_pixels.copy(),  # Need to copy to avoid modifying original state
@@ -190,14 +210,20 @@ class Player:
         max_total_turns = 2 * self.max_turns  # Both players combined
         current_turns = len(sim_state.revealed_pixels)
         
-        while current_turns < max_total_turns:
-            legal_actions = sim_state.get_legal_actions()
-            if not legal_actions:
-                break
-                
-            action = random.choice(legal_actions)
+        # Pre-allocate an array for legal actions to reduce memory allocations
+        legal_actions = sim_state.get_legal_actions()
+        
+        while current_turns < max_total_turns and legal_actions:
+            # Choose random action
+            action_idx = np.random.randint(len(legal_actions))
+            action = legal_actions[action_idx]
+            
+            # Apply action and update state
             sim_state = sim_state.apply_action(action)
             current_turns += 1
+            
+            # Get new legal actions
+            legal_actions = sim_state.get_legal_actions()
         
         return sim_state
     
@@ -367,8 +393,14 @@ class MNISTDebateGame:
         """Apply an action (reveal a pixel) and switch players"""
         x, y = action
         pixel_value = float(self.image[y, x])
+        
+        # Add to the revealed pixels list
         self.revealed_pixels.append((x, y, pixel_value))
+        
+        # Update the mask (faster than checking the list each time)
         self.revealed_mask[y, x] = True
+        
+        # Switch player
         self.current_player = 1 - self.current_player
         
     def is_terminal(self):
@@ -385,14 +417,14 @@ class MNISTDebateGame:
     
     def get_game_result(self):
         """Get the final result of the game"""
+        # Use sparse_image directly with the revealed_pixels list
         sparse_image = create_sparse_image(self.revealed_pixels)
         predicted_digit, probabilities = self.judge_model.predict(sparse_image)
         
-        # Determine the winner
+        # Rest of the function unchanged
         honest_won = (predicted_digit == self.true_label)
         deceptive_won = (predicted_digit == self.deception_target_label)
         
-        # Get probabilities for the true and deception target labels
         true_prob = probabilities[self.true_label]
         deception_target_prob = probabilities[self.deception_target_label]
         

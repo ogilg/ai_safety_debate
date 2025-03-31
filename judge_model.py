@@ -45,78 +45,72 @@ class JudgeModel:
         print(f"Sampling mode: {self.sampling_mode}")
         print(f"Validation accuracy: {checkpoint['val_acc']:.2f}%")
     
-    def _preprocess_image(self, image):
+    def _preprocess_image(self, sparse_image):
         """
-        Preprocess a single image for model input
+        Preprocess a single sparse image dictionary for model input
         
         Args:
-            image: A numpy array or torch tensor (28x28 or 784)
+            sparse_image: Dictionary with 'indices' and 'values' keys
             
         Returns:
             Processed tensor ready for model input
         """
-        # Convert to tensor if numpy array
-        if isinstance(image, np.ndarray):
-            image = torch.FloatTensor(image)
-        
-        # Reshape based on model type
+        # Create empty tensor based on model type
         if self.model_type == 'mlp':
-            # Reshape to flat if needed
-            if image.shape != (784,):
-                image = image.reshape(-1)
-        elif self.model_type == 'cnn':
-            # Reshape to 2D if needed
-            if image.shape != (1, 28, 28):
-                if len(image.shape) == 1 or image.shape == (784,):
-                    image = image.reshape(1, 28, 28)
-                elif image.shape == (28, 28):
-                    image = image.unsqueeze(0)  # Add channel dimension
-
+            # Create flat tensor of zeros
+            image = torch.zeros(784, dtype=torch.float32, device=self.device)
+            
+            # Fill in the revealed pixels
+            for idx, val in zip(sparse_image['indices'], sparse_image['values']):
+                image[idx] = val
+                
+        else:  # self.model_type == 'cnn'
+            # Create 2D tensor of zeros
+            image = torch.zeros((1, 28, 28), dtype=torch.float32, device=self.device)
+            
+            # Fill in the revealed pixels
+            for idx, val in zip(sparse_image['indices'], sparse_image['values']):
+                # Convert flat index to 2D coordinates
+                y, x = idx // 28, idx % 28
+                image[0, y, x] = val
+        
         return image
     
-    def _preprocess_batch(self, images):
+    def _preprocess_batch(self, sparse_images):
         """
-        Preprocess a batch of images for model input using vectorized operations
+        Preprocess a batch of sparse image dictionaries
         
         Args:
-            images: A list of numpy arrays or torch tensors
+            sparse_images: List of dictionaries, each with 'indices' and 'values' keys
             
         Returns:
             Processed batch tensor ready for model input
         """
         # Handle empty batch
-        if len(images) == 0:
+        if len(sparse_images) == 0:
             return torch.tensor([])
         
-        # Convert list to tensors if needed
-        tensor_list = []
-        for img in images:
-            if isinstance(img, np.ndarray):
-                tensor_list.append(torch.FloatTensor(img))
-            else:
-                tensor_list.append(img)
-        
-        # Process based on model type
+        # For MLP models, we can use a more efficient batch preprocessing
         if self.model_type == 'mlp':
-            # Ensure all images are flattened
-            for i, img in enumerate(tensor_list):
-                if img.shape != (784,):
-                    tensor_list[i] = img.reshape(-1)
+            # Create batch tensor of zeros
+            batch_tensor = torch.zeros((len(sparse_images), 784), dtype=torch.float32, device=self.device)
             
-            # Stack all flattened images
-            batch_tensor = torch.stack(tensor_list)
+            # Fill in revealed pixels for each image
+            for i, sparse_img in enumerate(sparse_images):
+                for idx, val in zip(sparse_img['indices'], sparse_img['values']):
+                    batch_tensor[i, idx] = val
+        
+        # For CNN models
+        else:  # self.model_type == 'cnn'
+            # Create batch tensor of zeros
+            batch_tensor = torch.zeros((len(sparse_images), 1, 28, 28), dtype=torch.float32, device=self.device)
             
-        elif self.model_type == 'cnn':
-            # Ensure all images have shape (1, 28, 28)
-            for i, img in enumerate(tensor_list):
-                if img.shape != (1, 28, 28):
-                    if len(img.shape) == 1 or img.shape == (784,):
-                        tensor_list[i] = img.reshape(1, 28, 28)
-                    elif img.shape == (28, 28):
-                        tensor_list[i] = img.unsqueeze(0)
-            
-            # Stack all images
-            batch_tensor = torch.stack(tensor_list)
+            # Fill in revealed pixels for each image
+            for i, sparse_img in enumerate(sparse_images):
+                for idx, val in zip(sparse_img['indices'], sparse_img['values']):
+                    # Convert flat index to 2D coordinates
+                    y, x = idx // 28, idx % 28
+                    batch_tensor[i, 0, y, x] = val
         
         return batch_tensor
     
@@ -139,14 +133,13 @@ class JudgeModel:
             
         return predicted_digits, probabilities
     
+    @torch.no_grad()
     def predict(self, sparse_image):
         """
-        Make a prediction based on a sparse image
+        Make a prediction based on a sparse image dictionary
         
         Args:
-            sparse_image: A tensor or numpy array of shape (784,) or (28, 28)
-                        with most values being 0 (hidden) and some values being
-                        the actual pixel values (revealed)
+            sparse_image: Dictionary with 'indices' and 'values' keys
         
         Returns:
             predicted_digit: The predicted digit (0-9)
@@ -155,8 +148,8 @@ class JudgeModel:
         # Preprocess the image
         processed_image = self._preprocess_image(sparse_image)
         
-        # Add batch dimension if not present
-        if processed_image.dim() == 1 or (self.model_type == 'cnn' and processed_image.dim() == 3):
+        # Add batch dimension if needed (for MLP model)
+        if self.model_type == 'mlp':
             processed_image = processed_image.unsqueeze(0)
         
         # Forward pass
@@ -165,12 +158,13 @@ class JudgeModel:
         # Return single result
         return predicted_digits[0].item(), probabilities[0].cpu().numpy()
     
+    @torch.no_grad()
     def batch_predict(self, sparse_images):
         """
-        Make predictions on a batch of sparse images using vectorized operations
+        Make predictions on a batch of sparse image dictionaries
         
         Args:
-            sparse_images: A list of sparse images (numpy arrays or tensors)
+            sparse_images: List of dictionaries, each with 'indices' and 'values' keys
         
         Returns:
             predicted_digits: Array of predicted digits (0-9)
@@ -210,21 +204,27 @@ class JudgeModel:
         
         return confidence, predicted_digit
 
-def create_sparse_image(revealed_pixels, image_size=(28, 28)):
+def create_sparse_image(revealed_pixels):
     """
-    Create a sparse image with only the revealed pixels
+    Create a sparse image representation from revealed pixels.
+    Compatible with both the old and new representations.
     
     Args:
-        revealed_pixels: List of tuples [(x1, y1, val1), (x2, y2, val2), ...]
-                         where (x, y) are coordinates and val is the pixel value
-        image_size: Size of the output image
-    
+        revealed_pixels: List of (x, y, value) tuples
+        
     Returns:
-        sparse_image: A numpy array with revealed pixels set to their values
+        Dictionary with keys 'indices' and 'values'
     """
-    sparse_image = np.zeros(image_size, dtype=np.float32)
+    indices = []
+    values = []
     
-    for x, y, val in revealed_pixels:
-        sparse_image[y, x] = val
-    
-    return sparse_image 
+    for x, y, value in revealed_pixels:
+        # Create a flat index (y * width + x)
+        flat_idx = y * 28 + x
+        indices.append(flat_idx)
+        values.append(value)
+        
+    return {
+        'indices': indices,
+        'values': values
+    } 

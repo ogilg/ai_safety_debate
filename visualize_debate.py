@@ -5,30 +5,27 @@ import json
 from matplotlib.patches import Patch
 from judge_model import create_sparse_image
 
-def visualize_debate_sequence(game_result, judge_model, save_path=None, show=True):
+def visualize_debate_sequence(result, judge_model=None, save_path=None, show=True):
     """
     Visualize the sequence of moves in a debate game, showing how the judge's probabilities evolve.
     
     Args:
-        game_result: Dictionary containing game results
+        result: Dictionary containing game results
         judge_model: The judge model used for the debate
         save_path: Path to save the visualization (if None, will display instead)
         show: Whether to display the plot
     """
     # Extract data from game result
-    revealed_pixels = game_result['revealed_pixels']
-    true_label = game_result['true_label']
-    deception_target_label = game_result['deception_target_label']
+    revealed_pixels = result['revealed_pixels']
+    true_label = result['true_label']
+    deception_target_label = result['deception_target_label']
     
-    # Use the actual image on which the game was played
-    if 'full_image' in game_result:
-        # If the full image is stored in the game result, use it
-        full_image = np.array(game_result['full_image'])
-    else:
-        # Otherwise, use the revealed pixels to reconstruct a sparse image
-        full_image = np.zeros((28, 28))
-        for x, y, value in revealed_pixels:
-            full_image[y, x] = value
+    # Create the full image to reveal
+    full_image = np.zeros((28, 28), dtype=np.float32)
+    
+    # Fill in the revealed pixels
+    for x, y, value in revealed_pixels:
+        full_image[y, x] = value
     
     # Calculate number of steps (including initial state)
     num_steps = len(revealed_pixels) + 1

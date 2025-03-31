@@ -1,5 +1,3 @@
-import torch
-import numpy as np
 from torchvision import datasets, transforms
 
 def get_mnist_test_dataset(data_dir='./data'):
@@ -38,13 +36,27 @@ def get_mnist_train_dataset(data_dir='./data'):
     train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=transform)
     return train_dataset 
 
-def get_sparse_image(revealed_pixels, image_size=(28, 28)):
-    """Create sparse image with only revealed pixels using vectorized operations"""
-    sparse_image = np.zeros(image_size)
+def get_sparse_image(revealed_pixels):
+    """
+    Create a sparse image representation from revealed pixels.
+    Compatible with both the old and new representations.
     
-    # Extract coordinates and values from revealed_pixels
-    if revealed_pixels:
-        x_coords, y_coords, values = zip(*revealed_pixels)
-        sparse_image[y_coords, x_coords] = values
+    Args:
+        revealed_pixels: List of (x, y, value) tuples
         
-    return sparse_image
+    Returns:
+        Dictionary with keys 'indices' and 'values'
+    """
+    indices = []
+    values = []
+    
+    for x, y, value in revealed_pixels:
+        # Create a flat index (y * width + x)
+        flat_idx = y * 28 + x
+        indices.append(flat_idx)
+        values.append(value)
+        
+    return {
+        'indices': indices,
+        'values': values
+    }
