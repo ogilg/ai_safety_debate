@@ -5,5 +5,16 @@
 /results
 /debate_results
 /models
+/comprehensive_results
+/models_cnn
+*.pth
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.mdc
+
 
 

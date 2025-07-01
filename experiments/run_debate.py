@@ -1,15 +1,15 @@
-import torch
+import argparse
 import numpy as np
+import torch
 import random
 import json
 import os
-import argparse
-from judge_model import JudgeModel
 import matplotlib
 # Use non-interactive backend if running without display
 if os.environ.get('DISPLAY', '') == '':
     matplotlib.use('Agg')
-from data_utils import get_mnist_test_dataset
+from judge.judge_model import JudgeModel
+from judge.data_utils import get_mnist_test_dataset
 from evaluate_debate import evaluate_debate_performance
 
 def main():

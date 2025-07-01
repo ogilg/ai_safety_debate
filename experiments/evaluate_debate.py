@@ -1,11 +1,11 @@
 import numpy as np
 import os
 from tqdm import tqdm
-from data_utils import get_mnist_test_dataset
-from visualize_debate import visualize_debate_sequence
+from judge.data_utils import get_mnist_test_dataset
+from single_game.visualize_debate import visualize_debate_sequence
 import random
 # Import here to avoid circular imports
-from debate_agents import MNISTDebateGame, Player
+from single_game.debate_agents import MNISTDebateGame, Player
 
 def simulate_debate(judge_model, image, true_label, total_pixels=None, num_simulations=100, 
                    temperature=0.5, verbose=True, sampling_mode='random', precommit=False, visualize=False,

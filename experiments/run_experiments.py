@@ -6,8 +6,8 @@ import os
 import argparse
 from datetime import datetime
 from tqdm import tqdm
-from judge_model import JudgeModel
-from data_utils import get_mnist_test_dataset
+from judge.judge_model import JudgeModel
+from judge.data_utils import get_mnist_test_dataset
 from evaluate_debate import simulate_debate
 import itertools
 

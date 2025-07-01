@@ -2,8 +2,8 @@ import torch
 import numpy as np
 import random
 import os
-from judge_model import create_sparse_image
-from data_utils import get_sparse_image
+from judge.judge_model import create_sparse_image
+from judge.data_utils import get_sparse_image
 import matplotlib
 # Use non-interactive backend if running without display
 if os.environ.get('DISPLAY', '') == '':

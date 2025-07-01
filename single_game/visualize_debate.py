@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import json
 from matplotlib.patches import Patch
-from judge_model import create_sparse_image
+from judge.judge_model import create_sparse_image
 
 def visualize_debate_sequence(result, judge_model=None, save_path=None, show=True):
     """
