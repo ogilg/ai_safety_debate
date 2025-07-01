@@ -40,7 +40,7 @@ class MNISTGameState:
     
     def get_legal_actions(self):
         """Return coordinates of pixels that haven't been revealed yet using vectorized operations"""
-        if self.sampling_mode == 'random':
+        if self.sampling_mode in ['random', 'weighted']:
             # Use numpy to find unrevealed pixels (much faster than list comprehension)
             y_indices, x_indices = np.where(~self.revealed_mask)
             return list(zip(x_indices, y_indices))
@@ -338,7 +338,7 @@ class MNISTDebateGame:
             deception_target_label: Target incorrect digit for deceptive agent (if None, will be chosen automatically)
             total_pixels: Total number of pixels to reveal (should match judge training)
                          If None, will try to extract from judge_model
-            sampling_mode: How to sample pixels: 'random' or 'nonzero'
+            sampling_mode: How to sample pixels: 'random', 'nonzero', or 'weighted'
         """
         self.judge_model = judge_model
         self.image = image

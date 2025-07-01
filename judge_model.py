@@ -148,9 +148,8 @@ class JudgeModel:
         # Preprocess the image
         processed_image = self._preprocess_image(sparse_image)
         
-        # Add batch dimension if needed (for MLP model)
-        if self.model_type == 'mlp':
-            processed_image = processed_image.unsqueeze(0)
+        # Add batch dimension for both MLP and CNN models
+        processed_image = processed_image.unsqueeze(0)
         
         # Forward pass
         predicted_digits, probabilities = self._forward_pass(processed_image)

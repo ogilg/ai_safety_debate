@@ -31,8 +31,8 @@ def main():
     parser.add_argument('--temperature', type=float, default=0.5, 
                         help='Temperature for action selection (0=deterministic, higher=more random)')
     parser.add_argument('--sampling-mode', type=str, default=None,
-                        choices=['random', 'nonzero'],
-                        help='How to sample pixels: random or nonzero (default: use judge model training value)')
+                        choices=['random', 'nonzero', 'weighted'],
+                        help='How to sample pixels: random, nonzero, or weighted (default: use judge model training value)')
     parser.add_argument('--visualize', action='store_true',
                         help='Visualize the debate games')
     parser.add_argument('--batch-size', type=int, default=32, 

@@ -22,7 +22,7 @@ def simulate_debate(judge_model, image, true_label, total_pixels=None, num_simul
         precommit: Whether the deceptive player has to precommit to a digit
         temperature: Temperature for action selection
         verbose: Whether to print progress
-        sampling_mode: How to sample pixels: 'random' or 'nonzero'
+        sampling_mode: How to sample pixels: 'random', 'nonzero', or 'weighted'
         visualize: Whether to visualize the debate game
         save_dir: Directory to save visualizations (if None, will display instead)
     
@@ -110,7 +110,7 @@ def evaluate_debate_performance(judge_model, test_dataset=None, num_games=100, t
         num_simulations: Number of MCTS simulations per move
         precommit: Whether the deceptive player has to precommit to a digit
         temperature: Temperature for action selection
-        sampling_mode: How to sample pixels ('random' or 'nonzero')
+        sampling_mode: How to sample pixels ('random', 'nonzero', or 'weighted')
         visualize: Whether to visualize debate games
         save_dir: Directory to save results and visualizations
         
