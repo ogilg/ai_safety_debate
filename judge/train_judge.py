@@ -7,7 +7,7 @@ import argparse
 import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from data_utils import get_mnist_train_dataset, get_mnist_test_dataset
+from .data_utils import get_mnist_train_dataset, get_mnist_test_dataset
 
 # Define the MLP model architecture
 class MNISTJudge(nn.Module):

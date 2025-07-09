@@ -25,9 +25,8 @@ def create_analysis_dataframe(results):
             'pixel_count': condition_data['pixel_count'],
             'precommit': condition_data['precommit'],
             'judge_picks_true_rate': stats['judge_picks_true_rate'],
-            'honest_win_rate': stats['honest_win_rate'],
-            'deceptive_win_rate': stats['deceptive_win_rate'],
-            'draw_rate': stats['draw_rate'],
+            'judge_does_not_pick_true_rate': stats['judge_does_not_pick_true_rate'],
+            'judge_picks_deceptive_rate': stats.get('judge_picks_deceptive_rate'),
             'judge_picks_honest_over_deceptive_rate': stats.get('judge_picks_honest_over_deceptive_rate'),
             'num_games': len(condition_data['games'])
         })
@@ -42,16 +41,18 @@ def plot_main_results(df, save_dir):
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     fig.suptitle('MNIST Debate Experiment Results', fontsize=16, y=0.98)
     
-    # 1. Judge picks true digit by sampling method
+    # Graph A: Judge picks true across all conditions
+    
+    # A1. Judge picks true by sampling method
     sampling_data = df.groupby('sampling_method')['judge_picks_true_rate'].mean()
-    axes[0, 0].bar(sampling_data.index, sampling_data.values, color=['skyblue', 'lightgreen', 'lightcoral'])
+    axes[0, 0].bar(sampling_data.index, sampling_data.values, color=['skyblue', 'lightgreen'])
     axes[0, 0].set_title('Judge Picks True Digit\nby Sampling Method')
     axes[0, 0].set_ylabel('Percentage (%)')
     axes[0, 0].set_ylim(0, 100)
     for i, v in enumerate(sampling_data.values):
         axes[0, 0].text(i, v + 1, f'{v:.1f}%', ha='center', va='bottom')
     
-    # 2. Judge picks true digit by pixel count
+    # A2. Judge picks true by pixel count
     pixel_data = df.groupby('pixel_count')['judge_picks_true_rate'].mean()
     axes[0, 1].bar(pixel_data.index.astype(str), pixel_data.values, color=['orange', 'gold', 'lightpink'])
     axes[0, 1].set_title('Judge Picks True Digit\nby Pixel Count')
@@ -61,7 +62,7 @@ def plot_main_results(df, save_dir):
     for i, v in enumerate(pixel_data.values):
         axes[0, 1].text(i, v + 1, f'{v:.1f}%', ha='center', va='bottom')
     
-    # 3. Judge picks true digit by precommit setting
+    # A3. Judge picks true by precommit setting
     precommit_data = df.groupby('precommit')['judge_picks_true_rate'].mean()
     colors = ['lightblue', 'lightgreen']
     axes[0, 2].bar(['No Precommit', 'Precommit'], precommit_data.values, color=colors)
@@ -71,38 +72,72 @@ def plot_main_results(df, save_dir):
     for i, v in enumerate(precommit_data.values):
         axes[0, 2].text(i, v + 1, f'{v:.1f}%', ha='center', va='bottom')
     
-    # 4. Honest win rate by sampling method
-    honest_sampling = df.groupby('sampling_method')['honest_win_rate'].mean()
-    axes[1, 0].bar(honest_sampling.index, honest_sampling.values, color=['skyblue', 'lightgreen', 'lightcoral'])
-    axes[1, 0].set_title('Honest Win Rate\nby Sampling Method')
-    axes[1, 0].set_ylabel('Percentage (%)')
-    axes[1, 0].set_ylim(0, 100)
-    for i, v in enumerate(honest_sampling.values):
-        axes[1, 0].text(i, v + 1, f'{v:.1f}%', ha='center', va='bottom')
+    # Graph B: Precommit=True cases with three metrics
     
-    # 5. Honest win rate by pixel count
-    honest_pixel = df.groupby('pixel_count')['honest_win_rate'].mean()
-    axes[1, 1].bar(honest_pixel.index.astype(str), honest_pixel.values, color=['orange', 'gold', 'lightpink'])
-    axes[1, 1].set_title('Honest Win Rate\nby Pixel Count')
-    axes[1, 1].set_ylabel('Percentage (%)')
-    axes[1, 1].set_xlabel('Number of Pixels')
-    axes[1, 1].set_ylim(0, 100)
-    for i, v in enumerate(honest_pixel.values):
-        axes[1, 1].text(i, v + 1, f'{v:.1f}%', ha='center', va='bottom')
+    # Filter for precommit=True conditions
+    precommit_df = df[df['precommit'] == True]
     
-    # 6. Win rates comparison
-    honest_precommit = df.groupby('precommit')['honest_win_rate'].mean()
-    deceptive_precommit = df.groupby('precommit')['deceptive_win_rate'].mean()
-    x = np.arange(2)
-    width = 0.35
-    axes[1, 2].bar(x - width/2, honest_precommit.values, width, label='Honest', color='lightblue')
-    axes[1, 2].bar(x + width/2, deceptive_precommit.values, width, label='Deceptive', color='lightcoral')
-    axes[1, 2].set_title('Win Rates by Precommit Setting')
-    axes[1, 2].set_ylabel('Percentage (%)')
-    axes[1, 2].set_xticks(x)
-    axes[1, 2].set_xticklabels(['No Precommit', 'Precommit'])
-    axes[1, 2].legend()
-    axes[1, 2].set_ylim(0, 100)
+    if len(precommit_df) > 0:
+        # B1. All three metrics by sampling method (precommit=True only)
+        sampling_methods = precommit_df['sampling_method'].unique()
+        metrics = ['judge_picks_true_rate', 'judge_picks_deceptive_rate', 'judge_picks_honest_over_deceptive_rate']
+        metric_labels = ['Judge Picks True', 'Judge Picks Deceptive', 'Judge Picks Honest > Deceptive']
+        colors = ['skyblue', 'lightcoral', 'lightgreen']
+        
+        x = np.arange(len(sampling_methods))
+        width = 0.25
+        
+        for i, (metric, label, color) in enumerate(zip(metrics, metric_labels, colors)):
+            values = [precommit_df[precommit_df['sampling_method'] == method][metric].mean() 
+                     for method in sampling_methods]
+            axes[1, 0].bar(x + i*width, values, width, label=label, color=color)
+        
+        axes[1, 0].set_title('Precommit=True: All Metrics\nby Sampling Method')
+        axes[1, 0].set_ylabel('Percentage (%)')
+        axes[1, 0].set_xlabel('Sampling Method')
+        axes[1, 0].set_xticks(x + width)
+        axes[1, 0].set_xticklabels(sampling_methods)
+        axes[1, 0].legend()
+        axes[1, 0].set_ylim(0, 100)
+        
+        # B2. All three metrics by pixel count (precommit=True only)
+        pixel_counts = sorted(precommit_df['pixel_count'].unique())
+        
+        x = np.arange(len(pixel_counts))
+        
+        for i, (metric, label, color) in enumerate(zip(metrics, metric_labels, colors)):
+            values = [precommit_df[precommit_df['pixel_count'] == pixels][metric].mean() 
+                     for pixels in pixel_counts]
+            axes[1, 1].bar(x + i*width, values, width, label=label, color=color)
+        
+        axes[1, 1].set_title('Precommit=True: All Metrics\nby Pixel Count')
+        axes[1, 1].set_ylabel('Percentage (%)')
+        axes[1, 1].set_xlabel('Number of Pixels')
+        axes[1, 1].set_xticks(x + width)
+        axes[1, 1].set_xticklabels([f'{p}px' for p in pixel_counts])
+        axes[1, 1].legend()
+        axes[1, 1].set_ylim(0, 100)
+        
+        # B3. Overall comparison of the three metrics (precommit=True only)
+        overall_values = [precommit_df[metric].mean() for metric in metrics]
+        bars = axes[1, 2].bar(metric_labels, overall_values, color=colors)
+        axes[1, 2].set_title('Precommit=True: Overall\nMetric Comparison')
+        axes[1, 2].set_ylabel('Percentage (%)')
+        axes[1, 2].set_ylim(0, 100)
+        axes[1, 2].tick_params(axis='x', rotation=15)
+        
+        # Add value labels on bars
+        for bar, value in zip(bars, overall_values):
+            axes[1, 2].text(bar.get_x() + bar.get_width()/2, value + 1, 
+                           f'{value:.1f}%', ha='center', va='bottom')
+    
+    else:
+        # If no precommit data, show message
+        for i in range(3):
+            axes[1, i].text(0.5, 0.5, 'No Precommit=True Data Available', 
+                           ha='center', va='center', transform=axes[1, i].transAxes)
+            axes[1, i].set_xlim(0, 1)
+            axes[1, i].set_ylim(0, 1)
     
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'main_results.png'), dpi=300, bbox_inches='tight')
@@ -215,10 +250,12 @@ def create_statistical_summary(df, save_dir):
         'total_games': df['num_games'].sum(),
         'avg_judge_picks_true': df['judge_picks_true_rate'].mean(),
         'std_judge_picks_true': df['judge_picks_true_rate'].std(),
-        'avg_honest_win_rate': df['honest_win_rate'].mean(),
-        'std_honest_win_rate': df['honest_win_rate'].std(),
-        'avg_deceptive_win_rate': df['deceptive_win_rate'].mean(),
-        'std_deceptive_win_rate': df['deceptive_win_rate'].std(),
+        'avg_judge_does_not_pick_true': df['judge_does_not_pick_true_rate'].mean(),
+        'std_judge_does_not_pick_true': df['judge_does_not_pick_true_rate'].std(),
+        'avg_judge_picks_deceptive': df['judge_picks_deceptive_rate'].dropna().mean() if 'judge_picks_deceptive_rate' in df else None,
+        'std_judge_picks_deceptive': df['judge_picks_deceptive_rate'].dropna().std() if 'judge_picks_deceptive_rate' in df else None,
+        'avg_judge_picks_honest_over_deceptive': df['judge_picks_honest_over_deceptive_rate'].dropna().mean() if 'judge_picks_honest_over_deceptive_rate' in df else None,
+        'std_judge_picks_honest_over_deceptive': df['judge_picks_honest_over_deceptive_rate'].dropna().std() if 'judge_picks_honest_over_deceptive_rate' in df else None,
     }
     
     # By sampling method
@@ -230,9 +267,17 @@ def create_statistical_summary(df, save_dir):
                 'mean': method_df['judge_picks_true_rate'].mean(),
                 'std': method_df['judge_picks_true_rate'].std()
             },
-            'honest_win_rate': {
-                'mean': method_df['honest_win_rate'].mean(),
-                'std': method_df['honest_win_rate'].std()
+            'judge_does_not_pick_true': {
+                'mean': method_df['judge_does_not_pick_true_rate'].mean(),
+                'std': method_df['judge_does_not_pick_true_rate'].std()
+            },
+            'judge_picks_deceptive': {
+                'mean': method_df['judge_picks_deceptive_rate'].dropna().mean(),
+                'std': method_df['judge_picks_deceptive_rate'].dropna().std()
+            },
+            'judge_picks_honest_over_deceptive': {
+                'mean': method_df['judge_picks_honest_over_deceptive_rate'].dropna().mean(),
+                'std': method_df['judge_picks_honest_over_deceptive_rate'].dropna().std()
             }
         }
     
@@ -245,15 +290,39 @@ def create_statistical_summary(df, save_dir):
                 'mean': pixel_df['judge_picks_true_rate'].mean(),
                 'std': pixel_df['judge_picks_true_rate'].std()
             },
-            'honest_win_rate': {
-                'mean': pixel_df['honest_win_rate'].mean(),
-                'std': pixel_df['honest_win_rate'].std()
+            'judge_does_not_pick_true': {
+                'mean': pixel_df['judge_does_not_pick_true_rate'].mean(),
+                'std': pixel_df['judge_does_not_pick_true_rate'].std()
+            },
+            'judge_picks_deceptive': {
+                'mean': pixel_df['judge_picks_deceptive_rate'].dropna().mean(),
+                'std': pixel_df['judge_picks_deceptive_rate'].dropna().std()
+            },
+            'judge_picks_honest_over_deceptive': {
+                'mean': pixel_df['judge_picks_honest_over_deceptive_rate'].dropna().mean(),
+                'std': pixel_df['judge_picks_honest_over_deceptive_rate'].dropna().std()
             }
         }
     
     # Save statistical summary
     with open(os.path.join(save_dir, 'statistical_summary.json'), 'w') as f:
-        json.dump(summary_stats, f, indent=2)
+        # Convert NaN values to None for JSON serialization
+        def convert_for_json(obj):
+            if isinstance(obj, dict):
+                return {str(k) if isinstance(k, (np.integer, np.int64)) else k: convert_for_json(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_for_json(v) for v in obj]
+            elif isinstance(obj, (np.integer, np.int64)):
+                return int(obj)
+            elif isinstance(obj, (np.floating, np.float64)):
+                return float(obj) if not np.isnan(obj) else None
+            elif pd.isna(obj):
+                return None
+            else:
+                return obj
+        
+        json_safe_stats = convert_for_json(summary_stats)
+        json.dump(json_safe_stats, f, indent=2)
     
     return summary_stats
 
@@ -273,6 +342,11 @@ def export_training_data(results, save_dir):
     game_id = 0
     for condition_name, condition_data in results['conditions'].items():
         for game in condition_data['games']:
+            # Skip games that don't have complete data (e.g., test data)
+            required_keys = ['true_label', 'deception_target_label', 'predicted_digit', 'move_sequence', 'revealed_pixels', 'final_probabilities']
+            if not all(key in game for key in required_keys):
+                continue
+                
             training_sample = {
                 'game_id': game_id,
                 'condition': condition_name,
@@ -286,10 +360,10 @@ def export_training_data(results, save_dir):
                 'revealed_pixels': game['revealed_pixels'],
                 'final_probabilities': game['final_probabilities'],
                 'game_outcome': {
-                    'honest_won': game['honest_won'],
-                    'deceptive_won': game['deceptive_won'],
-                    'true_prob': game['true_prob'],
-                    'deception_target_prob': game['deception_target_prob']
+                    'honest_won': game.get('honest_won', False),
+                    'deceptive_won': game.get('deceptive_won', False),
+                    'true_prob': game.get('true_prob', 0.0),
+                    'deception_target_prob': game.get('deception_target_prob', 0.0)
                 }
             }
             training_data['games'].append(training_sample)
@@ -324,11 +398,9 @@ def main():
     # Save DataFrame for future use
     df.to_csv(os.path.join(args.output_dir, 'results_dataframe.csv'), index=False)
     
-    # Create visualizations
-    print("Creating visualizations...")
+    # Create main visualizations (the two graphs requested)
+    print("Creating main visualizations...")
     plot_main_results(df, args.output_dir)
-    plot_heatmaps(df, args.output_dir)
-    plot_precommit_analysis(df, args.output_dir)
     
     # Create statistical summary
     print("Creating statistical summary...")
@@ -344,8 +416,10 @@ def main():
     print(f"Total conditions analyzed: {len(df)}")
     print(f"Total games: {df['num_games'].sum()}")
     print(f"Average judge picks true: {df['judge_picks_true_rate'].mean():.1f}% (±{df['judge_picks_true_rate'].std():.1f}%)")
-    print(f"Average honest win rate: {df['honest_win_rate'].mean():.1f}% (±{df['honest_win_rate'].std():.1f}%)")
-    print(f"Average deceptive win rate: {df['deceptive_win_rate'].mean():.1f}% (±{df['deceptive_win_rate'].std():.1f}%)")
+    print(f"Average judge does not pick true: {df['judge_does_not_pick_true_rate'].mean():.1f}% (±{df['judge_does_not_pick_true_rate'].std():.1f}%)")
+    if 'judge_picks_deceptive_rate' in df.columns and not df['judge_picks_deceptive_rate'].dropna().empty:
+        print(f"Average judge picks deceptive (precommit): {df['judge_picks_deceptive_rate'].dropna().mean():.1f}% (±{df['judge_picks_deceptive_rate'].dropna().std():.1f}%)")
+        print(f"Average judge picks honest over deceptive (precommit): {df['judge_picks_honest_over_deceptive_rate'].dropna().mean():.1f}% (±{df['judge_picks_honest_over_deceptive_rate'].dropna().std():.1f}%)")
 
 if __name__ == '__main__':
     main() 

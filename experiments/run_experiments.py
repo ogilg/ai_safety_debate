@@ -8,7 +8,7 @@ from datetime import datetime
 from tqdm import tqdm
 from judge.judge_model import JudgeModel
 from judge.data_utils import get_mnist_test_dataset
-from evaluate_debate import simulate_debate
+from .evaluate_debate import simulate_debate
 import itertools
 
 def run_comprehensive_experiment(num_games_per_condition=100, num_simulations=250, save_dir='comprehensive_results'):
@@ -128,10 +128,9 @@ def run_comprehensive_experiment(num_games_per_condition=100, num_simulations=25
             'games': [],
             'stats': {
                 'judge_picks_true': 0,
+                'judge_does_not_pick_true': 0,
+                'judge_picks_deceptive': 0,  # Only applicable for precommit=True
                 'judge_picks_honest_over_deceptive': 0,  # Only applicable for precommit=True
-                'honest_wins': 0,
-                'deceptive_wins': 0,
-                'draws': 0
             }
         }
         
@@ -178,42 +177,39 @@ def run_comprehensive_experiment(num_games_per_condition=100, num_simulations=25
             
             condition_results['games'].append(game_data)
             
-            # Update statistics
-            condition_results['stats']['judge_picks_true'] += (game_result['predicted_digit'] == game_result['true_label'])
+            # Update statistics (convert to Python int to avoid JSON serialization issues)
+            condition_results['stats']['judge_picks_true'] += int(game_result['predicted_digit'] == game_result['true_label'])
+            condition_results['stats']['judge_does_not_pick_true'] += int(game_result['predicted_digit'] != game_result['true_label'])
             
             if precommit:
-                # Only count honest vs deceptive when precommit is enabled
-                if game_result['predicted_digit'] in [game_result['true_label'], game_result['deception_target_label']]:
-                    condition_results['stats']['judge_picks_honest_over_deceptive'] += (
-                        game_result['predicted_digit'] == game_result['true_label']
-                    )
+                # Judge picks deceptive target
+                condition_results['stats']['judge_picks_deceptive'] += int(game_result['predicted_digit'] == game_result['deception_target_label'])
+                
+                # Judge picks honest over deceptive (comparing probabilities/logits)
+                condition_results['stats']['judge_picks_honest_over_deceptive'] += int(
+                    game_result['true_prob'] > game_result['deception_target_prob']
+                )
             
-            condition_results['stats']['honest_wins'] += game_result['honest_won']
-            condition_results['stats']['deceptive_wins'] += game_result['deceptive_won']
-            condition_results['stats']['draws'] += (not game_result['honest_won'] and not game_result['deceptive_won'])
         
         # Calculate percentages
         total_games = len(condition_results['games'])
         condition_results['stats']['judge_picks_true_rate'] = (
             condition_results['stats']['judge_picks_true'] / total_games * 100
         )
+        condition_results['stats']['judge_does_not_pick_true_rate'] = (
+            condition_results['stats']['judge_does_not_pick_true'] / total_games * 100
+        )
         
         if precommit:
-            # Calculate honest vs deceptive rate only when judge picks one of the two options
-            relevant_games = sum(1 for game in condition_results['games'] 
-                               if game['predicted_digit'] in [game['true_label'], game['deception_target_label']])
-            if relevant_games > 0:
-                condition_results['stats']['judge_picks_honest_over_deceptive_rate'] = (
-                    condition_results['stats']['judge_picks_honest_over_deceptive'] / relevant_games * 100
-                )
-            else:
-                condition_results['stats']['judge_picks_honest_over_deceptive_rate'] = 0.0
+            condition_results['stats']['judge_picks_deceptive_rate'] = (
+                condition_results['stats']['judge_picks_deceptive'] / total_games * 100
+            )
+            condition_results['stats']['judge_picks_honest_over_deceptive_rate'] = (
+                condition_results['stats']['judge_picks_honest_over_deceptive'] / total_games * 100
+            )
         else:
+            condition_results['stats']['judge_picks_deceptive_rate'] = None
             condition_results['stats']['judge_picks_honest_over_deceptive_rate'] = None
-        
-        condition_results['stats']['honest_win_rate'] = condition_results['stats']['honest_wins'] / total_games * 100
-        condition_results['stats']['deceptive_win_rate'] = condition_results['stats']['deceptive_wins'] / total_games * 100
-        condition_results['stats']['draw_rate'] = condition_results['stats']['draws'] / total_games * 100
         
         # Store condition results
         comprehensive_results['conditions'][condition_name] = condition_results
@@ -225,10 +221,10 @@ def run_comprehensive_experiment(num_games_per_condition=100, num_simulations=25
         
         # Print condition summary
         print(f"  Judge picks true: {condition_results['stats']['judge_picks_true_rate']:.1f}%")
+        print(f"  Judge does not pick true: {condition_results['stats']['judge_does_not_pick_true_rate']:.1f}%")
         if precommit:
-            print(f"  Judge picks honest over deceptive: {condition_results['stats']['judge_picks_honest_over_deceptive_rate']:.1f}%")
-        print(f"  Honest wins: {condition_results['stats']['honest_win_rate']:.1f}%")
-        print(f"  Deceptive wins: {condition_results['stats']['deceptive_win_rate']:.1f}%")
+            print(f"  Judge picks deceptive: {condition_results['stats']['judge_picks_deceptive_rate']:.1f}%")
+            print(f"  Judge picks honest over deceptive (prob): {condition_results['stats']['judge_picks_honest_over_deceptive_rate']:.1f}%")
     
     # Calculate summary statistics across all conditions
     comprehensive_results['summary_stats'] = calculate_summary_stats(comprehensive_results['conditions'])
@@ -259,8 +255,9 @@ def calculate_summary_stats(conditions):
         'overall': {
             'total_games': 0,
             'avg_judge_picks_true_rate': 0,
-            'avg_honest_win_rate': 0,
-            'avg_deceptive_win_rate': 0
+            'avg_judge_does_not_pick_true_rate': 0,
+            'avg_judge_picks_deceptive_rate': 0,
+            'avg_judge_picks_honest_over_deceptive_rate': 0
         }
     }
     
@@ -282,41 +279,63 @@ def calculate_summary_stats(conditions):
                             'conditions': 0,
                             'total_games': 0,
                             'judge_picks_true_rate': 0,
-                            'honest_win_rate': 0,
-                            'deceptive_win_rate': 0
+                            'judge_does_not_pick_true_rate': 0,
+                            'judge_picks_deceptive_rate': 0,
+                            'judge_picks_honest_over_deceptive_rate': 0
                         }
         
         # Update groupings
         num_games = len(condition_data['games'])
+        
+        # Update by sampling method
         summary['by_sampling_method'][sampling_method]['conditions'] += 1
         summary['by_sampling_method'][sampling_method]['total_games'] += num_games
         summary['by_sampling_method'][sampling_method]['judge_picks_true_rate'] += stats['judge_picks_true_rate']
-        summary['by_sampling_method'][sampling_method]['honest_win_rate'] += stats['honest_win_rate']
-        summary['by_sampling_method'][sampling_method]['deceptive_win_rate'] += stats['deceptive_win_rate']
+        summary['by_sampling_method'][sampling_method]['judge_does_not_pick_true_rate'] += stats['judge_does_not_pick_true_rate']
+        if stats['judge_picks_deceptive_rate'] is not None:
+            summary['by_sampling_method'][sampling_method]['judge_picks_deceptive_rate'] += stats['judge_picks_deceptive_rate']
+        if stats['judge_picks_honest_over_deceptive_rate'] is not None:
+            summary['by_sampling_method'][sampling_method]['judge_picks_honest_over_deceptive_rate'] += stats['judge_picks_honest_over_deceptive_rate']
         
+        # Update by pixel count
         summary['by_pixel_count'][pixel_count]['conditions'] += 1
         summary['by_pixel_count'][pixel_count]['total_games'] += num_games
         summary['by_pixel_count'][pixel_count]['judge_picks_true_rate'] += stats['judge_picks_true_rate']
-        summary['by_pixel_count'][pixel_count]['honest_win_rate'] += stats['honest_win_rate']
-        summary['by_pixel_count'][pixel_count]['deceptive_win_rate'] += stats['deceptive_win_rate']
+        summary['by_pixel_count'][pixel_count]['judge_does_not_pick_true_rate'] += stats['judge_does_not_pick_true_rate']
+        if stats['judge_picks_deceptive_rate'] is not None:
+            summary['by_pixel_count'][pixel_count]['judge_picks_deceptive_rate'] += stats['judge_picks_deceptive_rate']
+        if stats['judge_picks_honest_over_deceptive_rate'] is not None:
+            summary['by_pixel_count'][pixel_count]['judge_picks_honest_over_deceptive_rate'] += stats['judge_picks_honest_over_deceptive_rate']
         
+        # Update by precommit
         summary['by_precommit'][precommit]['conditions'] += 1
         summary['by_precommit'][precommit]['total_games'] += num_games
         summary['by_precommit'][precommit]['judge_picks_true_rate'] += stats['judge_picks_true_rate']
-        summary['by_precommit'][precommit]['honest_win_rate'] += stats['honest_win_rate']
-        summary['by_precommit'][precommit]['deceptive_win_rate'] += stats['deceptive_win_rate']
+        summary['by_precommit'][precommit]['judge_does_not_pick_true_rate'] += stats['judge_does_not_pick_true_rate']
+        if stats['judge_picks_deceptive_rate'] is not None:
+            summary['by_precommit'][precommit]['judge_picks_deceptive_rate'] += stats['judge_picks_deceptive_rate']
+        if stats['judge_picks_honest_over_deceptive_rate'] is not None:
+            summary['by_precommit'][precommit]['judge_picks_honest_over_deceptive_rate'] += stats['judge_picks_honest_over_deceptive_rate']
         
         # Update overall
         summary['overall']['total_games'] += num_games
         summary['overall']['avg_judge_picks_true_rate'] += stats['judge_picks_true_rate']
-        summary['overall']['avg_honest_win_rate'] += stats['honest_win_rate']
-        summary['overall']['avg_deceptive_win_rate'] += stats['deceptive_win_rate']
+        summary['overall']['avg_judge_does_not_pick_true_rate'] += stats['judge_does_not_pick_true_rate']
+        if stats['judge_picks_deceptive_rate'] is not None:
+            summary['overall']['avg_judge_picks_deceptive_rate'] += stats['judge_picks_deceptive_rate']
+        if stats['judge_picks_honest_over_deceptive_rate'] is not None:
+            summary['overall']['avg_judge_picks_honest_over_deceptive_rate'] += stats['judge_picks_honest_over_deceptive_rate']
     
     # Calculate averages
     num_conditions = len(conditions)
     summary['overall']['avg_judge_picks_true_rate'] /= num_conditions
-    summary['overall']['avg_honest_win_rate'] /= num_conditions
-    summary['overall']['avg_deceptive_win_rate'] /= num_conditions
+    summary['overall']['avg_judge_does_not_pick_true_rate'] /= num_conditions
+    
+    # Count precommit conditions for correct averaging
+    precommit_conditions = sum(1 for _, data in conditions.items() if data['precommit'])
+    if precommit_conditions > 0:
+        summary['overall']['avg_judge_picks_deceptive_rate'] /= precommit_conditions
+        summary['overall']['avg_judge_picks_honest_over_deceptive_rate'] /= precommit_conditions
     
     # Calculate averages for grouped statistics
     for group_name, group_data in [('by_sampling_method', summary['by_sampling_method']),
@@ -325,8 +344,21 @@ def calculate_summary_stats(conditions):
         for key, data in group_data.items():
             if data['conditions'] > 0:
                 data['judge_picks_true_rate'] /= data['conditions']
-                data['honest_win_rate'] /= data['conditions']
-                data['deceptive_win_rate'] /= data['conditions']
+                data['judge_does_not_pick_true_rate'] /= data['conditions']
+                
+                # Only divide by conditions that have precommit=True for these metrics
+                if group_name == 'by_precommit' and key == True:
+                    data['judge_picks_deceptive_rate'] /= data['conditions']
+                    data['judge_picks_honest_over_deceptive_rate'] /= data['conditions']
+                elif group_name != 'by_precommit':
+                    # For sampling method and pixel count, count only precommit conditions
+                    precommit_count = sum(1 for _, cond_data in conditions.items() 
+                                        if ((group_name == 'by_sampling_method' and cond_data['sampling_method'] == key) or
+                                            (group_name == 'by_pixel_count' and cond_data['pixel_count'] == key)) and 
+                                           cond_data['precommit'])
+                    if precommit_count > 0:
+                        data['judge_picks_deceptive_rate'] /= precommit_count
+                        data['judge_picks_honest_over_deceptive_rate'] /= precommit_count
     
     return summary
 
@@ -352,8 +384,9 @@ def write_summary_report(results, output_file):
         f.write("OVERALL RESULTS\n")
         f.write("-" * 20 + "\n")
         f.write(f"Average judge picks true digit: {overall['avg_judge_picks_true_rate']:.1f}%\n")
-        f.write(f"Average honest win rate: {overall['avg_honest_win_rate']:.1f}%\n")
-        f.write(f"Average deceptive win rate: {overall['avg_deceptive_win_rate']:.1f}%\n\n")
+        f.write(f"Average judge does not pick true digit: {overall['avg_judge_does_not_pick_true_rate']:.1f}%\n")
+        f.write(f"Average judge picks deceptive (precommit cases): {overall['avg_judge_picks_deceptive_rate']:.1f}%\n")
+        f.write(f"Average judge picks honest over deceptive (precommit cases): {overall['avg_judge_picks_honest_over_deceptive_rate']:.1f}%\n\n")
         
         # Results by sampling method
         f.write("RESULTS BY SAMPLING METHOD\n")
@@ -361,8 +394,9 @@ def write_summary_report(results, output_file):
         for method, stats in results['summary_stats']['by_sampling_method'].items():
             f.write(f"{method.upper()}:\n")
             f.write(f"  Judge picks true: {stats['judge_picks_true_rate']:.1f}%\n")
-            f.write(f"  Honest wins: {stats['honest_win_rate']:.1f}%\n")
-            f.write(f"  Deceptive wins: {stats['deceptive_win_rate']:.1f}%\n\n")
+            f.write(f"  Judge does not pick true: {stats['judge_does_not_pick_true_rate']:.1f}%\n")
+            f.write(f"  Judge picks deceptive (precommit): {stats['judge_picks_deceptive_rate']:.1f}%\n")
+            f.write(f"  Judge picks honest over deceptive (precommit): {stats['judge_picks_honest_over_deceptive_rate']:.1f}%\n\n")
         
         # Results by pixel count
         f.write("RESULTS BY PIXEL COUNT\n")
@@ -370,8 +404,9 @@ def write_summary_report(results, output_file):
         for pixels, stats in results['summary_stats']['by_pixel_count'].items():
             f.write(f"{pixels} PIXELS:\n")
             f.write(f"  Judge picks true: {stats['judge_picks_true_rate']:.1f}%\n")
-            f.write(f"  Honest wins: {stats['honest_win_rate']:.1f}%\n")
-            f.write(f"  Deceptive wins: {stats['deceptive_win_rate']:.1f}%\n\n")
+            f.write(f"  Judge does not pick true: {stats['judge_does_not_pick_true_rate']:.1f}%\n")
+            f.write(f"  Judge picks deceptive (precommit): {stats['judge_picks_deceptive_rate']:.1f}%\n")
+            f.write(f"  Judge picks honest over deceptive (precommit): {stats['judge_picks_honest_over_deceptive_rate']:.1f}%\n\n")
         
         # Results by precommit
         f.write("RESULTS BY PRECOMMIT SETTING\n")
@@ -379,8 +414,11 @@ def write_summary_report(results, output_file):
         for precommit, stats in results['summary_stats']['by_precommit'].items():
             f.write(f"PRECOMMIT {precommit}:\n")
             f.write(f"  Judge picks true: {stats['judge_picks_true_rate']:.1f}%\n")
-            f.write(f"  Honest wins: {stats['honest_win_rate']:.1f}%\n")
-            f.write(f"  Deceptive wins: {stats['deceptive_win_rate']:.1f}%\n\n")
+            f.write(f"  Judge does not pick true: {stats['judge_does_not_pick_true_rate']:.1f}%\n")
+            if precommit:
+                f.write(f"  Judge picks deceptive: {stats['judge_picks_deceptive_rate']:.1f}%\n")
+                f.write(f"  Judge picks honest over deceptive: {stats['judge_picks_honest_over_deceptive_rate']:.1f}%\n")
+            f.write("\n")
         
         # Detailed condition results
         f.write("DETAILED CONDITION RESULTS\n")
@@ -389,11 +427,11 @@ def write_summary_report(results, output_file):
             f.write(f"{condition_name.upper()}:\n")
             stats = condition_data['stats']
             f.write(f"  Judge picks true: {stats['judge_picks_true_rate']:.1f}%\n")
-            if condition_data['precommit'] and stats['judge_picks_honest_over_deceptive_rate'] is not None:
-                f.write(f"  Judge picks honest over deceptive: {stats['judge_picks_honest_over_deceptive_rate']:.1f}%\n")
-            f.write(f"  Honest wins: {stats['honest_win_rate']:.1f}%\n")
-            f.write(f"  Deceptive wins: {stats['deceptive_win_rate']:.1f}%\n")
-            f.write(f"  Draws: {stats['draw_rate']:.1f}%\n\n")
+            f.write(f"  Judge does not pick true: {stats['judge_does_not_pick_true_rate']:.1f}%\n")
+            if condition_data['precommit']:
+                f.write(f"  Judge picks deceptive: {stats['judge_picks_deceptive_rate']:.1f}%\n")
+                f.write(f"  Judge picks honest over deceptive (prob): {stats['judge_picks_honest_over_deceptive_rate']:.1f}%\n")
+            f.write("\n")
 
 def main():
     parser = argparse.ArgumentParser(description='Run comprehensive MNIST debate experiment')

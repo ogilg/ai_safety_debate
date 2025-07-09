@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from train_judge import MNISTJudge
+from .train_judge import MNISTJudge
 
 class JudgeModel:
     def __init__(self, model_path, device=None):
